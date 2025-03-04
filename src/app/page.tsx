@@ -1,101 +1,180 @@
-import Image from "next/image";
+'use client'
+
+import { useState } from 'react'
+import { ChatBubbleLeftIcon, BoltIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import Sidebar from '@/components/Sidebar'
+import ChatInput from '@/components/ChatInput'
+import AnimatedBackground from '@/components/AnimatedBackground'
+
+interface Message {
+  content: string
+  role: 'user' | 'assistant'
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(false)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleSendMessage = async (content: string) => {
+    try {
+      setIsLoading(true)
+      // Add user message
+      const userMessage = { content, role: 'user' as const }
+      setMessages(prev => [...prev, userMessage])
+
+      // Send to API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [...messages, userMessage]
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to get response')
+      }
+
+      const data = await response.json()
+      
+      // Add AI response
+      setMessages(prev => [...prev, {
+        content: data.message.content,
+        role: 'assistant'
+      }])
+    } catch (error) {
+      console.error('Error sending message:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleExampleClick = (example: string) => {
+    handleSendMessage(example.replace(/[""]/g, '').replace(' →', ''))
+  }
+
+  return (
+    <AnimatedBackground>
+      <div className="flex h-screen">
+        {/* Sidebar */}
+        <Sidebar />
+
+        {/* Main content */}
+        <div className="flex-1 flex flex-col">
+          {/* Main content area */}
+          <main className="flex-1 p-6 overflow-y-auto">
+            {messages.length === 0 && (
+              <div className="h-full flex flex-col items-center pt-12">
+                <h1 className="text-4xl font-bold text-white mb-12">JasmineAI</h1>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto w-full px-4">
+                  {/* Examples */}
+                  <div className="p-5 rounded-xl bg-[#011f13]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg hover:bg-[#011f13]/50 transition-colors duration-200">
+                    <div className="flex items-center mb-4">
+                      <div className="p-1.5 bg-[#00ff88]/10 rounded-lg">
+                        <ChatBubbleLeftIcon className="h-5 w-5 text-[#00ff88]" />
+                      </div>
+                      <h2 className="ml-3 text-lg font-semibold text-white">Examples</h2>
+                    </div>
+                    <div className="space-y-3">
+                      <p 
+                        onClick={() => handleExampleClick("Explain quantum computing in simple terms")}
+                        className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
+                      >
+                        "Explain quantum computing in simple terms" →
+                      </p>
+                      <p 
+                        onClick={() => handleExampleClick("Got any creative ideas for a 10 year old's birthday?")}
+                        className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
+                      >
+                        "Got any creative ideas for a 10 year old's birthday?" →
+                      </p>
+                      <p 
+                        onClick={() => handleExampleClick("How do I make an HTTP request in JavaScript?")}
+                        className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
+                      >
+                        "How do I make an HTTP request in JavaScript?" →
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Capabilities */}
+                  <div className="p-5 rounded-xl bg-[#011f13]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg">
+                    <div className="flex items-center mb-4">
+                      <div className="p-1.5 bg-[#00ff88]/10 rounded-lg">
+                        <BoltIcon className="h-5 w-5 text-[#00ff88]" />
+                      </div>
+                      <h2 className="ml-3 text-lg font-semibold text-white">Capabilities</h2>
+                    </div>
+                    <div className="space-y-3">
+                      <p className="text-[#e2e8f0] text-sm p-3 rounded-lg bg-[#0c2b1c]/40">
+                        Remembers what user said earlier in the conversation
+                      </p>
+                      <p className="text-[#e2e8f0] text-sm p-3 rounded-lg bg-[#0c2b1c]/40">
+                        Allows user to provide follow-up corrections
+                      </p>
+                      <p className="text-[#e2e8f0] text-sm p-3 rounded-lg bg-[#0c2b1c]/40">
+                        Trained to decline inappropriate requests
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Limitations */}
+                  <div className="p-5 rounded-xl bg-[#011f13]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg">
+                    <div className="flex items-center mb-4">
+                      <div className="p-1.5 bg-[#00ff88]/10 rounded-lg">
+                        <ExclamationTriangleIcon className="h-5 w-5 text-[#00ff88]" />
+                      </div>
+                      <h2 className="ml-3 text-lg font-semibold text-white">Limitations</h2>
+                    </div>
+                    <div className="space-y-3">
+                      <p className="text-[#e2e8f0] text-sm p-3 rounded-lg bg-[#0c2b1c]/40">
+                        May occasionally generate incorrect information
+                      </p>
+                      <p className="text-[#e2e8f0] text-sm p-3 rounded-lg bg-[#0c2b1c]/40">
+                        May occasionally produce harmful instructions or biased content
+                      </p>
+                      <p className="text-[#e2e8f0] text-sm p-3 rounded-lg bg-[#0c2b1c]/40">
+                        Limited knowledge of world and events after 2021
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Messages will be rendered here */}
+            <div className="space-y-4 max-w-4xl mx-auto">
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`p-3.5 rounded-lg backdrop-blur-sm ${
+                    message.role === 'user'
+                      ? 'bg-[#1a2e23]/50 ml-auto max-w-md'
+                      : 'bg-[#2a3f33]/50 mr-auto max-w-md'
+                  }`}
+                >
+                  <p className="text-white text-sm whitespace-pre-wrap">{message.content}</p>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="bg-[#2a3f33]/50 backdrop-blur-sm mr-auto max-w-md p-3.5 rounded-lg">
+                  <p className="text-white text-sm">Thinking...</p>
+                </div>
+              )}
+            </div>
+          </main>
+
+          {/* Input area */}
+          <div className="border-t border-[#0c2b1c]/20 p-4 backdrop-blur-sm bg-[#001208]/20">
+            <div className="max-w-4xl mx-auto">
+              <ChatInput onSendMessage={handleSendMessage} />
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+      </div>
+    </AnimatedBackground>
+  )
 }
