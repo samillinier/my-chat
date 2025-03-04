@@ -29,9 +29,10 @@ export default function Home() {
   const [toast, setToast] = useState<Toast | null>(null)
   const [collection, setCollection] = useState<CollectionItem[]>([])
   const [chatHistory, setChatHistory] = useState<ChatHistory[]>([])
+  const [binChats, setBinChats] = useState<ChatHistory[]>([])
   const [currentChatId, setCurrentChatId] = useState<string | undefined>()
 
-  // Load chat history and collection from localStorage on mount
+  // Load chat history, collection, and bin from localStorage on mount
   useEffect(() => {
     // Load chat history
     const savedHistory = localStorage.getItem('chatHistory')
@@ -56,6 +57,22 @@ export default function Home() {
       }
     }
 
+    // Load bin
+    const savedBin = localStorage.getItem('binChats')
+    if (savedBin) {
+      try {
+        const parsed = JSON.parse(savedBin)
+        const bin = parsed.map((chat: any) => ({
+          ...chat,
+          createdAt: new Date(chat.createdAt),
+          updatedAt: new Date(chat.updatedAt)
+        }))
+        setBinChats(bin)
+      } catch (error) {
+        console.error('Error parsing bin:', error)
+      }
+    }
+
     // Load collection
     const savedCollection = localStorage.getItem('collection')
     if (savedCollection) {
@@ -76,8 +93,19 @@ export default function Home() {
   useEffect(() => {
     if (chatHistory.length > 0) {
       localStorage.setItem('chatHistory', JSON.stringify(chatHistory))
+    } else {
+      localStorage.removeItem('chatHistory')
     }
   }, [chatHistory])
+
+  // Save bin to localStorage whenever it changes
+  useEffect(() => {
+    if (binChats.length > 0) {
+      localStorage.setItem('binChats', JSON.stringify(binChats))
+    } else {
+      localStorage.removeItem('binChats')
+    }
+  }, [binChats])
 
   // Save collection to localStorage whenever it changes
   useEffect(() => {
@@ -164,6 +192,42 @@ export default function Home() {
     setMessages(chatMessages)
   }
 
+  const handleDeleteChat = (chatId: string) => {
+    const chatToDelete = chatHistory.find(chat => chat.id === chatId)
+    if (chatToDelete) {
+      // Move to bin
+      setBinChats(prev => [chatToDelete, ...prev])
+      // Remove from active chats
+      setChatHistory(prev => prev.filter(chat => chat.id !== chatId))
+      if (currentChatId === chatId) {
+        setCurrentChatId(undefined)
+        setMessages([])
+      }
+      showToast('Chat moved to bin', 'success')
+    }
+  }
+
+  const handleRestoreChat = (chatId: string) => {
+    const chatToRestore = binChats.find(chat => chat.id === chatId)
+    if (chatToRestore) {
+      // Move back to active chats
+      setChatHistory(prev => [chatToRestore, ...prev])
+      // Remove from bin
+      setBinChats(prev => prev.filter(chat => chat.id !== chatId))
+      showToast('Chat restored', 'success')
+    }
+  }
+
+  const handlePermanentDelete = (chatId: string) => {
+    setBinChats(prev => prev.filter(chat => chat.id !== chatId))
+    showToast('Chat permanently deleted', 'success')
+  }
+
+  const handleEmptyBin = () => {
+    setBinChats([])
+    showToast('Bin emptied', 'success')
+  }
+
   const handleExampleClick = (example: string) => {
     handleSendMessage(example.replace(/[""]/g, '').replace(' →', ''))
   }
@@ -224,6 +288,11 @@ export default function Home() {
           chatHistory={chatHistory}
           currentChatId={currentChatId}
           onSelectChat={handleSelectChat}
+          onDeleteChat={handleDeleteChat}
+          binChats={binChats}
+          onRestoreChat={handleRestoreChat}
+          onPermanentDelete={handlePermanentDelete}
+          onEmptyBin={handleEmptyBin}
         />
 
         {/* Main content */}
@@ -236,7 +305,10 @@ export default function Home() {
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto w-full px-4">
                   {/* Examples */}
-                  <div className="p-5 rounded-xl bg-[#011f13]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg hover:bg-[#011f13]/50 transition-colors duration-200">
+                  <div 
+                    onClick={() => handleExampleClick("Explain quantum computing in simple terms")}
+                    className="p-5 rounded-xl bg-[#052e1f]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg hover:bg-[#052e1f]/50 transition-colors duration-200 cursor-pointer"
+                  >
                     <div className="flex items-center mb-4">
                       <div className="p-1.5 bg-[#00ff88]/10 rounded-lg">
                         <ChatBubbleLeftIcon className="h-5 w-5 text-[#00ff88]" />
@@ -245,19 +317,16 @@ export default function Home() {
                     </div>
                     <div className="space-y-3">
                       <p 
-                        onClick={() => handleExampleClick("Explain quantum computing in simple terms")}
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
                       >
                         "Explain quantum computing in simple terms" →
                       </p>
                       <p 
-                        onClick={() => handleExampleClick("Got any creative ideas for a 10 year old's birthday?")}
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
                       >
                         "Got any creative ideas for a 10 year old's birthday?" →
                       </p>
                       <p 
-                        onClick={() => handleExampleClick("How do I make an HTTP request in JavaScript?")}
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
                       >
                         "How do I make an HTTP request in JavaScript?" →
@@ -266,7 +335,10 @@ export default function Home() {
                   </div>
 
                   {/* Capabilities */}
-                  <div className="p-5 rounded-xl bg-[#011f13]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg">
+                  <div 
+                    onClick={() => handleExampleClick("Tell me about your capabilities")}
+                    className="p-5 rounded-xl bg-[#052e1f]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg hover:bg-[#052e1f]/50 transition-colors duration-200 cursor-pointer"
+                  >
                     <div className="flex items-center mb-4">
                       <div className="p-1.5 bg-[#00ff88]/10 rounded-lg">
                         <BoltIcon className="h-5 w-5 text-[#00ff88]" />
@@ -287,7 +359,10 @@ export default function Home() {
                   </div>
 
                   {/* Limitations */}
-                  <div className="p-5 rounded-xl bg-[#011f13]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg">
+                  <div 
+                    onClick={() => handleExampleClick("What are your limitations?")}
+                    className="p-5 rounded-xl bg-[#052e1f]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg hover:bg-[#052e1f]/50 transition-colors duration-200 cursor-pointer"
+                  >
                     <div className="flex items-center mb-4">
                       <div className="p-1.5 bg-[#00ff88]/10 rounded-lg">
                         <ExclamationTriangleIcon className="h-5 w-5 text-[#00ff88]" />
