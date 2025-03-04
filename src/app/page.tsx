@@ -6,6 +6,7 @@ import Sidebar from '@/components/Sidebar'
 import ChatInput from '@/components/ChatInput'
 import AnimatedBackground from '@/components/AnimatedBackground'
 import { ChatHistory } from '@/components/History'
+import { auth } from '@/lib/firebase'
 
 interface Message {
   content: string
@@ -32,10 +33,10 @@ export default function Home() {
   const [binChats, setBinChats] = useState<ChatHistory[]>([])
   const [currentChatId, setCurrentChatId] = useState<string | undefined>()
 
-  // Load chat history, collection, and bin from localStorage on mount
-  useEffect(() => {
+  // Load data from localStorage
+  const loadDataFromLocalStorage = (userId: string) => {
     // Load chat history
-    const savedHistory = localStorage.getItem('chatHistory')
+    const savedHistory = localStorage.getItem(`chatHistory-${userId}`)
     if (savedHistory) {
       try {
         const parsed = JSON.parse(savedHistory)
@@ -58,7 +59,7 @@ export default function Home() {
     }
 
     // Load bin
-    const savedBin = localStorage.getItem('binChats')
+    const savedBin = localStorage.getItem(`binChats-${userId}`)
     if (savedBin) {
       try {
         const parsed = JSON.parse(savedBin)
@@ -74,7 +75,7 @@ export default function Home() {
     }
 
     // Load collection
-    const savedCollection = localStorage.getItem('collection')
+    const savedCollection = localStorage.getItem(`collection-${userId}`)
     if (savedCollection) {
       try {
         const parsed = JSON.parse(savedCollection)
@@ -87,32 +88,60 @@ export default function Home() {
         console.error('Error parsing collection:', error)
       }
     }
+  }
+
+  // Add auth state listener
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        // Load data when user logs in
+        loadDataFromLocalStorage(user.uid)
+      } else {
+        // Only clear the state, not the localStorage
+        setMessages([])
+        setCollection([])
+        setChatHistory([])
+        setBinChats([])
+        setCurrentChatId(undefined)
+      }
+    })
+
+    return () => unsubscribe()
   }, [])
 
   // Save chat history to localStorage whenever it changes
   useEffect(() => {
+    const user = auth.currentUser
+    if (!user) return // Don't save if no user is logged in
+
     if (chatHistory.length > 0) {
-      localStorage.setItem('chatHistory', JSON.stringify(chatHistory))
+      localStorage.setItem(`chatHistory-${user.uid}`, JSON.stringify(chatHistory))
     } else {
-      localStorage.removeItem('chatHistory')
+      localStorage.removeItem(`chatHistory-${user.uid}`)
     }
   }, [chatHistory])
 
   // Save bin to localStorage whenever it changes
   useEffect(() => {
+    const user = auth.currentUser
+    if (!user) return // Don't save if no user is logged in
+
     if (binChats.length > 0) {
-      localStorage.setItem('binChats', JSON.stringify(binChats))
+      localStorage.setItem(`binChats-${user.uid}`, JSON.stringify(binChats))
     } else {
-      localStorage.removeItem('binChats')
+      localStorage.removeItem(`binChats-${user.uid}`)
     }
   }, [binChats])
 
   // Save collection to localStorage whenever it changes
   useEffect(() => {
+    const user = auth.currentUser
+    if (!user) return // Don't save if no user is logged in
+
     if (collection.length > 0) {
-      localStorage.setItem('collection', JSON.stringify(collection))
+      localStorage.setItem(`collection-${user.uid}`, JSON.stringify(collection))
     } else {
-      localStorage.removeItem('collection')
+      localStorage.removeItem(`collection-${user.uid}`)
     }
   }, [collection])
 
@@ -301,7 +330,9 @@ export default function Home() {
           <main className="flex-1 p-6 overflow-y-auto">
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center pt-12">
-                <h1 className="text-4xl font-bold text-white mb-12">Jasmine AI</h1>
+                <div className="mb-12">
+                  <img src="/my-logo.png" alt="Logo" className="h-12 w-auto" />
+                </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto w-full px-4">
                   {/* Examples */}
@@ -324,7 +355,7 @@ export default function Home() {
                       <p 
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
                       >
-                        "Got any creative ideas for a 10 year old's birthday?" →
+                        "How to make ethiopian doro wot easily" →
                       </p>
                       <p 
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"

@@ -128,8 +128,11 @@ export default function Sidebar({
         <div className="flex items-center space-x-2">
           <div className="w-2 h-2 bg-gradient-to-tr from-green-400 to-green-500 rounded-full"></div>
           <div className="flex items-center">
+            <img src="/my-logo.png" alt="Logo" className="h-6 w-auto" />
+            {/* Text logo version - uncomment if needed
             <span className="logo-text text-white text-2xl tracking-tight">Jasmine</span>
             <span className="logo-text logo-text-ai text-2xl ml-1.5">AI</span>
+            */}
           </div>
         </div>
         <button className="p-1 hover:bg-[#1a2e23] rounded-lg">
