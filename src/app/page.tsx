@@ -1,26 +1,132 @@
 'use client'
 
-import { useState } from 'react'
-import { ChatBubbleLeftIcon, BoltIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { useState, useEffect } from 'react'
+import { ChatBubbleLeftIcon, BoltIcon, ExclamationTriangleIcon, Square3Stack3DIcon, DocumentDuplicateIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import Sidebar from '@/components/Sidebar'
 import ChatInput from '@/components/ChatInput'
 import AnimatedBackground from '@/components/AnimatedBackground'
+import { ChatHistory } from '@/components/History'
 
 interface Message {
   content: string
   role: 'user' | 'assistant'
 }
 
+interface Toast {
+  message: string
+  type: 'success' | 'error'
+}
+
+interface CollectionItem {
+  id: string
+  content: string
+  timestamp: Date
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [toast, setToast] = useState<Toast | null>(null)
+  const [collection, setCollection] = useState<CollectionItem[]>([])
+  const [chatHistory, setChatHistory] = useState<ChatHistory[]>([])
+  const [currentChatId, setCurrentChatId] = useState<string | undefined>()
+
+  // Load chat history and collection from localStorage on mount
+  useEffect(() => {
+    // Load chat history
+    const savedHistory = localStorage.getItem('chatHistory')
+    if (savedHistory) {
+      try {
+        const parsed = JSON.parse(savedHistory)
+        const history = parsed.map((chat: any) => ({
+          ...chat,
+          createdAt: new Date(chat.createdAt),
+          updatedAt: new Date(chat.updatedAt)
+        }))
+        setChatHistory(history)
+        
+        // Load the most recent chat if exists
+        if (history.length > 0) {
+          const mostRecent = history[0]
+          setCurrentChatId(mostRecent.id)
+          setMessages(mostRecent.messages)
+        }
+      } catch (error) {
+        console.error('Error parsing chat history:', error)
+      }
+    }
+
+    // Load collection
+    const savedCollection = localStorage.getItem('collection')
+    if (savedCollection) {
+      try {
+        const parsed = JSON.parse(savedCollection)
+        const collectionItems = parsed.map((item: any) => ({
+          ...item,
+          timestamp: new Date(item.timestamp)
+        }))
+        setCollection(collectionItems)
+      } catch (error) {
+        console.error('Error parsing collection:', error)
+      }
+    }
+  }, [])
+
+  // Save chat history to localStorage whenever it changes
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      localStorage.setItem('chatHistory', JSON.stringify(chatHistory))
+    }
+  }, [chatHistory])
+
+  // Save collection to localStorage whenever it changes
+  useEffect(() => {
+    if (collection.length > 0) {
+      localStorage.setItem('collection', JSON.stringify(collection))
+    } else {
+      localStorage.removeItem('collection')
+    }
+  }, [collection])
+
+  const createNewChat = () => {
+    const newChat: ChatHistory = {
+      id: Date.now().toString(),
+      title: 'New Chat',
+      messages: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+    setChatHistory(prev => [newChat, ...prev])
+    setCurrentChatId(newChat.id)
+    setMessages([])
+    return newChat.id
+  }
+
+  const updateChatHistory = (chatId: string, newMessages: Message[]) => {
+    setChatHistory(prev => prev.map(chat => {
+      if (chat.id === chatId) {
+        return {
+          ...chat,
+          messages: newMessages,
+          updatedAt: new Date()
+        }
+      }
+      return chat
+    }))
+  }
 
   const handleSendMessage = async (content: string) => {
     try {
       setIsLoading(true)
+      
+      // Create new chat if none exists
+      const chatId = currentChatId || createNewChat()
+
       // Add user message
       const userMessage = { content, role: 'user' as const }
-      setMessages(prev => [...prev, userMessage])
+      const updatedMessages = [...messages, userMessage]
+      setMessages(updatedMessages)
+      updateChatHistory(chatId, updatedMessages)
 
       // Send to API
       const response = await fetch('/api/chat', {
@@ -29,7 +135,7 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage]
+          messages: updatedMessages
         }),
       })
 
@@ -40,10 +146,12 @@ export default function Home() {
       const data = await response.json()
       
       // Add AI response
-      setMessages(prev => [...prev, {
+      const finalMessages = [...updatedMessages, {
         content: data.message.content,
-        role: 'assistant'
-      }])
+        role: 'assistant' as const
+      }]
+      setMessages(finalMessages)
+      updateChatHistory(chatId, finalMessages)
     } catch (error) {
       console.error('Error sending message:', error)
     } finally {
@@ -51,15 +159,72 @@ export default function Home() {
     }
   }
 
+  const handleSelectChat = (chatId: string, chatMessages: Message[]) => {
+    setCurrentChatId(chatId)
+    setMessages(chatMessages)
+  }
+
   const handleExampleClick = (example: string) => {
     handleSendMessage(example.replace(/[""]/g, '').replace(' →', ''))
   }
 
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 2000)
+  }
+
+  const handleCopyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content)
+      showToast('Copied to clipboard!', 'success')
+    } catch (error) {
+      showToast('Failed to copy to clipboard', 'error')
+    }
+  }
+
+  const handleAddToCollection = (content: string) => {
+    // Check if the message is already in the collection
+    if (collection.some(item => item.content === content)) {
+      showToast('Message already in collection', 'error')
+      return
+    }
+
+    const newItem: CollectionItem = {
+      id: Date.now().toString(),
+      content,
+      timestamp: new Date()
+    }
+    setCollection(prev => [...prev, newItem])
+    showToast('Added to collection!', 'success')
+  }
+
+  const handleDeleteFromCollection = (id: string) => {
+    setCollection(prev => prev.filter(item => item.id !== id))
+    showToast('Removed from collection', 'success')
+  }
+
   return (
     <AnimatedBackground>
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 flex items-center space-x-2 px-4 py-2 rounded-lg shadow-lg bg-[#1a2e23] text-white">
+          {toast.type === 'success' && (
+            <CheckCircleIcon className="h-5 w-5 text-[#00ff88]" />
+          )}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       <div className="flex h-screen">
         {/* Sidebar */}
-        <Sidebar />
+        <Sidebar 
+          collection={collection}
+          onDeleteFromCollection={handleDeleteFromCollection}
+          onNewChat={createNewChat}
+          chatHistory={chatHistory}
+          currentChatId={currentChatId}
+          onSelectChat={handleSelectChat}
+        />
 
         {/* Main content */}
         <div className="flex-1 flex flex-col">
@@ -67,7 +232,7 @@ export default function Home() {
           <main className="flex-1 p-6 overflow-y-auto">
             {messages.length === 0 && (
               <div className="h-full flex flex-col items-center pt-12">
-                <h1 className="text-4xl font-bold text-white mb-12">JasmineAI</h1>
+                <h1 className="text-4xl font-bold text-white mb-12">Jasmine AI</h1>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto w-full px-4">
                   {/* Examples */}
@@ -146,19 +311,39 @@ export default function Home() {
             )}
 
             {/* Messages will be rendered here */}
-            <div className="space-y-4 max-w-4xl mx-auto">
+            <div className="space-y-8 max-w-4xl mx-auto">
               {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={
-                    message.role === 'user'
-                      ? 'p-6 bg-[#00D26A] ml-auto max-w-[600px] rounded-[24px] shadow-lg'
-                      : 'p-6 bg-[#0a1f15] mr-auto max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30'
-                  }
-                >
-                  <p className={`text-lg leading-relaxed whitespace-pre-wrap ${
-                    message.role === 'user' ? 'text-black' : 'text-white'
-                  }`}>{message.content}</p>
+                <div key={index} className="relative">
+                  <div
+                    className={
+                      message.role === 'user'
+                        ? 'p-6 bg-[#00D26A] ml-auto max-w-[600px] rounded-[24px] shadow-lg'
+                        : 'p-6 bg-[#0a1f15] mr-auto max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30'
+                    }
+                  >
+                    <p className={`text-lg leading-relaxed whitespace-pre-wrap ${
+                      message.role === 'user' ? 'text-black' : 'text-white'
+                    }`}>{message.content}</p>
+                  </div>
+                  
+                  {message.role === 'assistant' && (
+                    <div className="absolute -bottom-6 left-4 flex space-x-2">
+                      <button
+                        onClick={() => handleCopyMessage(message.content)}
+                        className="group p-1.5 bg-[#1a2e23] hover:bg-[#243b2f] rounded-lg text-gray-400 hover:text-[#00ff88] transition-all duration-200"
+                        title="Copy message"
+                      >
+                        <DocumentDuplicateIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleAddToCollection(message.content)}
+                        className="group p-1.5 bg-[#1a2e23] hover:bg-[#243b2f] rounded-lg text-gray-400 hover:text-[#00ff88] transition-all duration-200"
+                        title="Add to collection"
+                      >
+                        <Square3Stack3DIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
               {isLoading && (

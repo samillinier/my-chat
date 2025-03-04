@@ -21,6 +21,9 @@ declare global {
         size?: number
         spacing?: number
         showLines?: boolean
+        points?: number
+        maxDistance?: number
+        backgroundAlpha?: number
       }) => {
         destroy: () => void
       }
@@ -70,7 +73,7 @@ export default function AnimatedBackground({ children }: Props) {
             scale: 1.00,
             scaleMobile: 1.00,
             color: 0x00ff88,
-            color2: 0x00ff88,
+            color2: 0x000a04,
             backgroundColor: 0x001a0e,
             size: 1.90,
             spacing: 29.00,

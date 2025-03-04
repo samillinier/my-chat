@@ -1,4 +1,4 @@
-# JasmineAI Chat Interface
+# Jasmine AI Chat Interface
 
 A modern chat interface built with Next.js, TypeScript, and Firebase, inspired by AI chat applications.
 
