@@ -150,18 +150,20 @@ export default function Home() {
               {messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`p-3.5 rounded-lg backdrop-blur-sm ${
+                  className={
                     message.role === 'user'
-                      ? 'bg-[#1a2e23]/50 ml-auto max-w-md'
-                      : 'bg-[#2a3f33]/50 mr-auto max-w-md'
-                  }`}
+                      ? 'p-6 bg-[#00D26A] ml-auto max-w-md rounded-[24px] shadow-lg'
+                      : 'p-4 bg-[#0a1f15] mr-auto max-w-md rounded-[20px] shadow-lg border border-[#0c2b1c]/30'
+                  }
                 >
-                  <p className="text-white text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p className={`text-base leading-relaxed whitespace-pre-wrap ${
+                    message.role === 'user' ? 'text-black' : 'text-white'
+                  }`}>{message.content}</p>
                 </div>
               ))}
               {isLoading && (
-                <div className="bg-[#2a3f33]/50 backdrop-blur-sm mr-auto max-w-md p-3.5 rounded-lg">
-                  <p className="text-white text-sm">Thinking...</p>
+                <div className="p-4 bg-[#0a1f15] mr-auto max-w-md rounded-[20px] shadow-lg border border-[#0c2b1c]/30">
+                  <p className="text-white text-base">Thinking...</p>
                 </div>
               )}
             </div>
