@@ -152,18 +152,18 @@ export default function Home() {
                   key={index}
                   className={
                     message.role === 'user'
-                      ? 'p-6 bg-[#00D26A] ml-auto max-w-md rounded-[24px] shadow-lg'
-                      : 'p-4 bg-[#0a1f15] mr-auto max-w-md rounded-[20px] shadow-lg border border-[#0c2b1c]/30'
+                      ? 'p-6 bg-[#00D26A] ml-auto max-w-[600px] rounded-[24px] shadow-lg'
+                      : 'p-6 bg-[#0a1f15] mr-auto max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30'
                   }
                 >
-                  <p className={`text-base leading-relaxed whitespace-pre-wrap ${
+                  <p className={`text-lg leading-relaxed whitespace-pre-wrap ${
                     message.role === 'user' ? 'text-black' : 'text-white'
                   }`}>{message.content}</p>
                 </div>
               ))}
               {isLoading && (
-                <div className="p-4 bg-[#0a1f15] mr-auto max-w-md rounded-[20px] shadow-lg border border-[#0c2b1c]/30">
-                  <p className="text-white text-base">Thinking...</p>
+                <div className="p-6 bg-[#0a1f15] mr-auto max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30">
+                  <p className="text-white text-lg">Thinking...</p>
                 </div>
               )}
             </div>
