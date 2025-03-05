@@ -226,8 +226,13 @@ export default function ChatInput({ onSendMessage, onScrollToTop }: ChatInputPro
       <div className="relative">
         <div className="absolute right-4 top-4">
           <button
-            onClick={onScrollToTop}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a2a] text-gray-400 hover:text-white"
+            onClick={(e) => {
+              e.preventDefault();
+              if (input.trim() || attachments.length > 0) {
+                handleSubmit(e as unknown as FormEvent);
+              }
+            }}
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#2a2a2a] text-gray-400 hover:text-white hover:bg-[#00D26A] transition-all duration-200"
           >
             <ArrowUpIcon className="h-5 w-5" />
           </button>

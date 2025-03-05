@@ -5,11 +5,13 @@ import {
   Cog6ToothIcon, 
   XMarkIcon,
   ArrowRightOnRectangleIcon,
-  EyeIcon
+  EyeIcon,
+  UserCircleIcon
 } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
 import { auth } from '@/lib/firebase'
-import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth'
+import { signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth'
+import Image from 'next/image'
 import History, { ChatHistory } from './History'
 
 interface CollectionItem {
@@ -82,16 +84,19 @@ export default function Sidebar({
   onEmptyBin,
   onClose
 }: SidebarProps) {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isCollectionOpen, setIsCollectionOpen] = useState(false)
   const [isBinOpen, setIsBinOpen] = useState(false)
   const [previewContent, setPreviewContent] = useState<{ id: string; content: string } | null>(null)
   const [modalContent, setModalContent] = useState<string | null>(null)
+  const [imageError, setImageError] = useState(false)
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      setUser(user)
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      console.log('Auth state changed:', currentUser?.photoURL) // Debug log
+      setUser(currentUser)
+      setImageError(false) // Reset error state when user changes
     })
 
     return () => unsubscribe()
@@ -100,9 +105,11 @@ export default function Sidebar({
   const signIn = async () => {
     const provider = new GoogleAuthProvider()
     try {
-      await signInWithPopup(auth, provider)
+      const result = await signInWithPopup(auth, provider)
+      console.log('Sign in successful:', result.user?.photoURL) // Debug log
     } catch (error) {
       console.error('Error signing in with Google:', error)
+      setImageError(true)
     }
   }
 
@@ -377,14 +384,25 @@ export default function Sidebar({
         {user ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <img
-                src={user.photoURL}
-                alt={user.displayName}
-                className="w-8 h-8 rounded-full"
-              />
+              <div className="w-8 h-8 rounded-full overflow-hidden relative">
+                {user.photoURL && !imageError ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || 'User'}
+                    className="w-full h-full object-cover"
+                    onError={() => {
+                      console.log('Image load error') // Debug log
+                      setImageError(true)
+                    }}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <UserCircleIcon className="w-8 h-8 text-gray-400" />
+                )}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate">
-                  {user.displayName}
+                  {user.displayName || 'User'}
                 </p>
                 <p className="text-xs text-gray-400 truncate">
                   {user.email}
