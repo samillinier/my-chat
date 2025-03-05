@@ -8,9 +8,8 @@ import {
   EyeIcon,
   UserCircleIcon
 } from '@heroicons/react/24/outline'
-import { useEffect, useState } from 'react'
-import { auth } from '@/lib/firebase'
-import { signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth'
+import { useState, useEffect } from 'react'
+import { useFirebaseAuth } from '@/hooks/useFirebaseAuth'
 import Image from 'next/image'
 import History, { ChatHistory } from './History'
 
@@ -84,42 +83,13 @@ export default function Sidebar({
   onEmptyBin,
   onClose
 }: SidebarProps) {
-  const [user, setUser] = useState<User | null>(null)
+  const { user, loading, error: authError, signIn: handleSignIn, signOut: handleSignOut } = useFirebaseAuth()
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isCollectionOpen, setIsCollectionOpen] = useState(false)
   const [isBinOpen, setIsBinOpen] = useState(false)
   const [previewContent, setPreviewContent] = useState<{ id: string; content: string } | null>(null)
   const [modalContent, setModalContent] = useState<string | null>(null)
   const [imageError, setImageError] = useState(false)
-
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-      console.log('Auth state changed:', currentUser?.photoURL) // Debug log
-      setUser(currentUser)
-      setImageError(false) // Reset error state when user changes
-    })
-
-    return () => unsubscribe()
-  }, [])
-
-  const signIn = async () => {
-    const provider = new GoogleAuthProvider()
-    try {
-      const result = await signInWithPopup(auth, provider)
-      console.log('Sign in successful:', result.user?.photoURL) // Debug log
-    } catch (error) {
-      console.error('Error signing in with Google:', error)
-      setImageError(true)
-    }
-  }
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth)
-    } catch (error) {
-      console.error('Error signing out:', error)
-    }
-  }
 
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('en-US', {
@@ -128,6 +98,17 @@ export default function Sidebar({
       hour: '2-digit',
       minute: '2-digit'
     }).format(date)
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="w-64 bg-[#000a06] flex flex-col h-screen text-gray-400">
+        <div className="flex items-center justify-center h-full">
+          <div className="animate-pulse text-gray-500">Loading...</div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -381,6 +362,11 @@ export default function Sidebar({
 
       {/* User Section */}
       <div className="p-4 border-t border-[#1a2e23]">
+        {authError && (
+          <div className="mb-4 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-red-400 text-sm">{authError}</p>
+          </div>
+        )}
         {user ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -391,7 +377,7 @@ export default function Sidebar({
                     alt={user.displayName || 'User'}
                     className="w-full h-full object-cover"
                     onError={() => {
-                      console.log('Image load error') // Debug log
+                      console.error('Image load error')
                       setImageError(true)
                     }}
                     referrerPolicy="no-referrer"
@@ -418,10 +404,10 @@ export default function Sidebar({
           </div>
         ) : (
           <button
-            onClick={signIn}
-            className="w-full flex items-center justify-center space-x-3 px-4 py-2.5 text-white bg-[#1a2e23] hover:bg-[#243b2f] rounded-lg transition-colors font-medium border border-[#2a3f32]"
+            onClick={handleSignIn}
+            className="w-full flex items-center justify-center space-x-3 px-4 py-3 text-white bg-[#1a2e23] hover:bg-[#243b2f] rounded-lg transition-colors font-medium border border-[#2a3f32]"
           >
-            <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>

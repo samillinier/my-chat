@@ -1,7 +1,20 @@
+'use client';
+
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
+
+// Ensure HTTPS for auth domain
+const ensureHttps = (domain: string | undefined) => {
+  if (!domain) return domain;
+  if (domain.startsWith('http://')) {
+    return domain.replace('http://', 'https://');
+  }
+  if (!domain.startsWith('https://') && !domain.includes('localhost')) {
+    return `https://${domain}`;
+  }
+  return domain;
+};
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -11,55 +24,97 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
-};
+} as const;
 
-// Validate required configuration
-const requiredConfigs = {
-  apiKey: firebaseConfig.apiKey,
-  storageBucket: firebaseConfig.storageBucket,
-  projectId: firebaseConfig.projectId
-};
-
-Object.entries(requiredConfigs).forEach(([key, value]) => {
-  if (!value) {
-    throw new Error(`Firebase ${key} is not configured! Please check your .env.local file.`);
-  }
-});
-
-let app;
 let auth: Auth;
-let db: Firestore;
 let storage: FirebaseStorage;
 
-try {
-  // Initialize Firebase
-  if (!getApps().length) {
-    console.log('Initializing new Firebase app with config:', {
-      storageBucket: firebaseConfig.storageBucket,
-      projectId: firebaseConfig.projectId
-    })
-    app = initializeApp(firebaseConfig)
-    console.log('Firebase app initialized successfully')
-  } else {
-    app = getApp()
-    console.log('Using existing Firebase app')
+// Initialize Firebase
+export const initFirebase = () => {
+  // Log current domain for debugging
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    const fullDomain = `${protocol}//${hostname}`;
+    console.log('Current domain:', fullDomain);
+    
+    // Force HTTPS except for localhost
+    if (protocol !== 'https:' && !hostname.includes('localhost')) {
+      console.warn('Warning: Site is not using HTTPS. This may cause authentication issues.');
+    }
   }
 
-  // Initialize services
-  auth = getAuth(app)
-  console.log('Firebase Auth initialized')
+  // Ensure authDomain uses HTTPS
+  const configWithHttps = {
+    ...firebaseConfig,
+    authDomain: ensureHttps(firebaseConfig.authDomain) || '',
+  };
 
-  db = getFirestore(app)
-  console.log('Firebase Firestore initialized')
+  console.log('Starting Firebase initialization with config:', {
+    hasApiKey: !!configWithHttps.apiKey,
+    hasAuthDomain: !!configWithHttps.authDomain,
+    hasProjectId: !!configWithHttps.projectId,
+    hasStorageBucket: !!configWithHttps.storageBucket,
+    hasMessagingSenderId: !!configWithHttps.messagingSenderId,
+    hasAppId: !!configWithHttps.appId,
+    authDomain: configWithHttps.authDomain, // Log actual authDomain for debugging
+  });
 
-  storage = getStorage(app)
-  if (!storage) {
-    throw new Error('Failed to initialize Firebase Storage')
+  // Check all required config values
+  const requiredConfigs = {
+    apiKey: configWithHttps.apiKey,
+    authDomain: configWithHttps.authDomain,
+    projectId: configWithHttps.projectId,
+    storageBucket: configWithHttps.storageBucket,
+    appId: configWithHttps.appId,
+  };
+
+  const missingConfigs = Object.entries(requiredConfigs)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
+
+  if (missingConfigs.length > 0) {
+    throw new Error(`Missing required Firebase configuration: ${missingConfigs.join(', ')}. Please check your environment variables.`);
   }
-  console.log('Firebase Storage initialized with bucket:', storage.app.options.storageBucket)
-} catch (error) {
-  console.error('Detailed error initializing Firebase:', error)
-  throw error;
-}
 
-export { app, auth, db, storage }; 
+  // Ensure authDomain matches current domain in production Vercel environment
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_VERCEL_ENV === 'production') {
+    const currentDomain = window.location.hostname;
+    const configDomain = configWithHttps.authDomain?.replace('https://', '');
+    
+    if (currentDomain.includes('vercel.app') && configDomain !== currentDomain) {
+      console.warn(`Warning: Current domain (${currentDomain}) doesn't match Firebase authDomain (${configDomain}). This may cause authentication issues.`);
+    }
+  }
+
+  try {
+    let app;
+    if (getApps().length) {
+      console.log('Firebase app already exists, retrieving existing app...');
+      app = getApp();
+    } else {
+      console.log('Initializing new Firebase app...');
+      app = initializeApp(configWithHttps);
+    }
+
+    if (!auth) {
+      console.log('Initializing Firebase Auth...');
+      auth = getAuth(app);
+    }
+
+    if (!storage) {
+      console.log('Initializing Firebase Storage...');
+      storage = getStorage(app);
+    }
+
+    console.log('Firebase initialization completed successfully');
+    return { app, auth, storage };
+  } catch (error) {
+    console.error('Error during Firebase initialization:', error);
+    throw error;
+  }
+};
+
+// Export initialized instances
+export { auth, storage };
+export default firebaseConfig; 

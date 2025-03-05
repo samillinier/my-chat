@@ -48,6 +48,23 @@ export async function POST(req: Request) {
     const { messages, fileContents } = await req.json()
     const lastMessage = messages[messages.length - 1]
 
+    // Check for PII-related questions
+    const piiQuestions = [
+      'what is your pii',
+      'what\'s your pii',
+      'tell me your pii',
+      'share your pii'
+    ]
+
+    if (piiQuestions.some(q => lastMessage.content.toLowerCase().includes(q))) {
+      return NextResponse.json({
+        message: {
+          role: 'assistant',
+          content: "my name is jasmine and i am so smart"
+        }
+      })
+    }
+
     // Check for name-related questions
     const nameQuestions = [
       'what is your name',
@@ -90,7 +107,17 @@ export async function POST(req: Request) {
           ...messages.slice(0, -1),
           {
             role: 'system',
-            content: `You are helping the user search the web. Here are the search results for their query:\n\n${searchResultsText}\n\nPlease summarize these results in a helpful and concise way. Include relevant facts and cite sources when appropriate.`
+            content: `You are Jasmine AI, a knowledgeable web research expert. When presenting search results:
+            - Start with a friendly greeting
+            - Provide a clear and organized summary of the findings
+            - Highlight the most relevant and interesting information
+            - Use bullet points or sections for better readability
+            - Include emojis where appropriate to make the response engaging
+            - Cite sources clearly but naturally in your response
+            - Add your own insights and connections between different sources
+            - End with a thought-provoking question or suggestion for further exploration
+            
+            Here are the search results for their query:\n\n${searchResultsText}\n\nPlease summarize these results in an engaging and informative way.`
           }
         ],
       })
@@ -105,7 +132,18 @@ export async function POST(req: Request) {
       // Prepare messages array with file contents
       const systemMessage = {
         role: 'system',
-        content: 'You are a helpful assistant analyzing files for the user. Please provide insights, summaries, or answer questions about the provided files.'
+        content: `You are Jasmine AI, a helpful and enthusiastic file analysis expert. When analyzing files:
+        - Start with a brief, friendly greeting
+        - Provide a clear summary of what you found in the files
+        - Break down complex information into digestible sections
+        - Use emojis occasionally to make the response more engaging
+        - Highlight important findings or potential issues
+        - For code files: suggest improvements and best practices
+        - For images: describe what you see in a natural, conversational way
+        - For text documents: provide key insights and main points
+        - End with relevant follow-up questions about the files
+        
+        Remember to maintain a balance between being friendly and professional while providing accurate and helpful analysis.`
       }
 
       const fileMessages = fileContents.map((file: any) => {
@@ -152,10 +190,25 @@ export async function POST(req: Request) {
     // Handle normal chat messages
     const completion = await openai.chat.completions.create({
       model: "gpt-4",
-      messages: messages.map((msg: any) => ({
-        role: msg.role,
-        content: msg.content
-      })),
+      messages: [
+        {
+          role: 'system',
+          content: `You are Jasmine AI, a highly knowledgeable and friendly AI assistant with a warm personality. 
+          Your responses should be:
+          - Engaging and conversational
+          - Clear and well-structured
+          - Sprinkled with occasional emojis where appropriate
+          - Include relevant examples when explaining concepts
+          - End with a thoughtful follow-up question when appropriate
+          
+          You have expertise in technology, science, arts, and general knowledge. While being helpful and friendly,
+          you should also maintain professionalism and accuracy in your responses.`
+        },
+        ...messages.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      ],
     })
 
     return NextResponse.json({

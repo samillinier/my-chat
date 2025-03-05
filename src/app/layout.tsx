@@ -1,5 +1,8 @@
 import './globals.css'
-import RootClientWrapper from '@/components/RootClientWrapper'
+import { Inter } from 'next/font/google'
+import AppWrapper from '@/components/AppWrapper'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
   title: 'Jasmine AI',
@@ -11,5 +14,13 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <RootClientWrapper>{children}</RootClientWrapper>
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} bg-[#001a11]`} suppressHydrationWarning>
+        <AppWrapper>
+          {children}
+        </AppWrapper>
+      </body>
+    </html>
+  )
 }

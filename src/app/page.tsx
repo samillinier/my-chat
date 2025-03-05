@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ChatBubbleLeftIcon, BoltIcon, ExclamationTriangleIcon, Square3Stack3DIcon, DocumentDuplicateIcon, CheckCircleIcon, ArrowDownIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
+import { ChatBubbleLeftIcon, BoltIcon, ExclamationTriangleIcon, Square3Stack3DIcon, DocumentDuplicateIcon, CheckCircleIcon, ArrowDownIcon, DocumentTextIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import Sidebar from '@/components/Sidebar'
 import ChatInput from '@/components/ChatInput'
 import AnimatedBackground from '@/components/AnimatedBackground'
 import { ChatHistory } from '@/components/History'
 import { auth, storage } from '@/lib/firebase'
 import HamburgerMenu from '@/components/HamburgerMenu'
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
+import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth'
 import TypingAnimation from '@/components/TypingAnimation'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { extractTextFromPDF } from '@/utils/pdfUtils'
@@ -575,6 +575,17 @@ export default function Home() {
           </button>
         )}
         
+        {/* Mobile Sign Out Button - Only shown when logged in and sidebar is closed */}
+        {auth.currentUser && !isSidebarOpen && (
+          <button
+            onClick={() => signOut(auth)}
+            className="lg:hidden fixed top-4 right-16 z-50 flex items-center space-x-2 px-4 py-2 bg-[#1a2e23] hover:bg-[#243b2f] text-white rounded-lg transition-colors shadow-lg border border-[#2a3f32]"
+          >
+            <ArrowRightOnRectangleIcon className="h-5 w-5" />
+            <span className="hidden sm:inline">Sign out</span>
+          </button>
+        )}
+        
         {/* Sidebar - Hidden by default on mobile */}
         <div className={`fixed inset-0 lg:relative z-40 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
           <div className="h-full">
@@ -611,9 +622,15 @@ export default function Home() {
           {/* Main content area */}
           <main className="flex-1 p-6 overflow-y-auto">
             {messages.length === 0 && (
-              <div className="h-full flex flex-col items-center pt-12">
-                <div className="mb-12">
-                  <img src="/my-logo.png" alt="Logo" className="h-12 w-auto" />
+              <div className="h-full flex flex-col items-center pt-12 md:pt-12">
+                <div className="flex flex-col items-center">
+                  <div className="mb-6 mt-32 md:mt-0">
+                    <img src="/my-logo.png" alt="Logo" className="h-12 w-auto" />
+                  </div>
+                  {/* Mobile welcome message */}
+                  <div className="md:hidden text-center px-4">
+                    <h2 className="text-xl text-white mb-4">What can I help with?</h2>
+                  </div>
                 </div>
                 
                 {/* Example cards - Hidden on mobile */}
@@ -695,11 +712,6 @@ export default function Home() {
                       </p>
                     </div>
                   </div>
-                </div>
-
-                {/* Mobile welcome message */}
-                <div className="md:hidden text-center px-4">
-                  <h2 className="text-xl text-white mb-4">What can I help with?</h2>
                 </div>
               </div>
             )}
