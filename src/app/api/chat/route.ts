@@ -41,6 +41,10 @@ interface FileContent {
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OpenAI API key is not configured')
+    }
+
     const { messages, fileContents } = await req.json()
     const lastMessage = messages[messages.length - 1]
 
@@ -98,23 +102,46 @@ export async function POST(req: Request) {
 
     // Handle file processing
     if (fileContents && fileContents.length > 0) {
-      // Prepare file content for GPT
-      const fileInfo = fileContents.map((file: FileContent) => 
-        `File: ${file.name} (${file.type})\nContent:\n${file.content}\n---\n`
-      ).join('\n')
+      // Prepare messages array with file contents
+      const systemMessage = {
+        role: 'system',
+        content: 'You are a helpful assistant analyzing files for the user. Please provide insights, summaries, or answer questions about the provided files.'
+      }
+
+      const fileMessages = fileContents.map((file: any) => {
+        // For images, use vision API format
+        if (file.type.startsWith('image/')) {
+          return {
+            role: 'user',
+            content: [
+              { type: 'text', text: `Analyzing image: ${file.name}` },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: file.content, // Base64 data URL
+                  detail: 'auto'
+                }
+              }
+            ]
+          }
+        }
+        
+        // For other file types, use text format
+        return {
+          role: 'user',
+          content: `File: ${file.name} (${file.type})\nContent:\n${file.content}\n---\n`
+        }
+      })
+
+      const userMessages = messages.map((msg: any) => ({
+        role: msg.role,
+        content: msg.content
+      }))
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: 'system',
-            content: `You are analyzing files for the user. Here are the contents of the uploaded files:\n\n${fileInfo}\n\nPlease analyze these files and provide insights, summaries, or answer any questions the user has about them. If the files contain code, you can provide code review, suggestions for improvement, or help fix any issues.`
-          },
-          ...messages.map((msg: any) => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        ],
+        model: "gpt-4-vision-preview",
+        messages: [systemMessage, ...fileMessages, ...userMessages],
+        max_tokens: 4096
       })
 
       return NextResponse.json({

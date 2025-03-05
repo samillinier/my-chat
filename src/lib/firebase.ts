@@ -34,27 +34,31 @@ let storage: FirebaseStorage;
 try {
   // Initialize Firebase
   if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-    console.log('Firebase app initialized successfully');
+    console.log('Initializing new Firebase app with config:', {
+      storageBucket: firebaseConfig.storageBucket,
+      projectId: firebaseConfig.projectId
+    })
+    app = initializeApp(firebaseConfig)
+    console.log('Firebase app initialized successfully')
   } else {
-    app = getApp();
-    console.log('Using existing Firebase app');
+    app = getApp()
+    console.log('Using existing Firebase app')
   }
 
   // Initialize services
-  auth = getAuth(app);
-  console.log('Firebase Auth initialized');
+  auth = getAuth(app)
+  console.log('Firebase Auth initialized')
 
-  db = getFirestore(app);
-  console.log('Firebase Firestore initialized');
+  db = getFirestore(app)
+  console.log('Firebase Firestore initialized')
 
-  storage = getStorage(app);
+  storage = getStorage(app)
   if (!storage) {
-    throw new Error('Failed to initialize Firebase Storage');
+    throw new Error('Failed to initialize Firebase Storage')
   }
-  console.log('Firebase Storage initialized');
+  console.log('Firebase Storage initialized with bucket:', storage.app.options.storageBucket)
 } catch (error) {
-  console.error('Error initializing Firebase:', error);
+  console.error('Detailed error initializing Firebase:', error)
   throw error;
 }
 

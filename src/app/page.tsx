@@ -11,6 +11,7 @@ import HamburgerMenu from '@/components/HamburgerMenu'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import TypingAnimation from '@/components/TypingAnimation'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { extractTextFromPDF } from '@/utils/pdfUtils'
 
 interface Message {
   content: string
@@ -21,6 +22,21 @@ interface Message {
     size: number
     url?: string
   }[]
+}
+
+interface FileAttachment {
+  id: string
+  name: string
+  type: string
+  content?: string
+  imageUrl?: string
+  videoUrl?: string
+  videoDuration?: string
+  videoThumbnail?: string
+  file?: File
+  size?: number
+  lastModified?: number
+  webkitRelativePath?: string
 }
 
 interface Toast {
@@ -248,10 +264,19 @@ export default function Home() {
     }))
   }
 
-  const handleSendMessage = async (content: string, attachments?: File[]) => {
+  const handleSendMessage = async (content: string, attachments?: FileAttachment[]) => {
     try {
-      console.log('Starting handleSendMessage with attachments:', attachments?.length || 0)
+      console.log('Starting handleSendMessage with attachments:', attachments?.map(f => ({
+        name: f.name,
+        type: f.type,
+        size: f.file?.size
+      })))
       setIsLoading(true)
+      
+      // If there are only attachments without user message, create a default message
+      const messageContent = attachments?.length && !content.trim() 
+        ? "I've uploaded some files. How can you help me with them?" 
+        : content
       
       // Increment AI interaction counter for non-logged-in users
       if (!auth.currentUser) {
@@ -259,11 +284,10 @@ export default function Home() {
         setAiInteractions(newCount)
         
         // Check if 24 hours have passed since last dismissal
-        const twentyFourHours = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+        const twentyFourHours = 24 * 60 * 60 * 1000
         const canShowPrompt = !loginPrompt.lastDismissed || 
                             (Date.now() - loginPrompt.lastDismissed) > twentyFourHours
 
-        // Show login prompt after 10 interactions if conditions are met
         if (newCount >= 10 && !loginPrompt.hasInteracted && canShowPrompt) {
           setLoginPrompt({ isVisible: true, hasInteracted: false })
         }
@@ -271,72 +295,40 @@ export default function Home() {
       
       // Create new chat if none exists
       const chatId = currentChatId || createNewChat()
+      console.log('Using chat ID:', chatId)
 
       // Handle file uploads if any
       let uploadedFiles: Message['attachments'] = []
       let fileContents = []
 
       if (attachments && attachments.length > 0) {
-        console.log('Starting to process attachments:', attachments.map(f => ({ name: f.name, type: f.type, size: f.size })))
+        console.log('Processing attachments:', attachments.length, 'files')
         
-        for (const file of attachments) {
+        for (const attachment of attachments) {
+          if (!attachment.file) continue
+
+          const file = attachment.file
           console.log(`Processing file: ${file.name} (${file.type})`)
           
           try {
-            let content = ''
-            let url: string | undefined
+            let content = attachment.content
+            let url: string | undefined = attachment.imageUrl || attachment.videoUrl
 
-            if (file.type.startsWith('text/') || file.type === 'application/json') {
-              content = await file.text()
-              console.log(`Successfully read text content from ${file.name}`)
-            } else if (file.type.startsWith('image/')) {
-              console.log(`Starting image upload process for: ${file.name}`)
-              
-              // Validate file size again
-              const maxSize = 10 * 1024 * 1024 // 10MB limit
-              if (file.size > maxSize) {
-                showToast(`Image ${file.name} is too large (max 10MB)`, 'error')
-                continue
-              }
-
-              // Validate image type
-              const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-              if (!allowedImageTypes.includes(file.type)) {
-                showToast(`Image type ${file.type} is not supported. Please use JPEG, PNG, GIF, or WebP.`, 'error')
-                continue
-              }
-
-              try {
-                // Create a unique filename
-                const timestamp = Date.now()
-                const randomString = Math.random().toString(36).substring(7)
-                const extension = file.name.split('.').pop()
-                const fileName = `${timestamp}-${randomString}.${extension}`
-                
-                console.log('Creating storage reference for:', fileName)
-                
-                if (!storage) {
-                  throw new Error('Firebase Storage is not initialized')
+            if (!content) {
+              if (file.type === 'application/pdf') {
+                console.log('Processing PDF file:', file.name)
+                try {
+                  content = await extractTextFromPDF(file)
+                  console.log(`Successfully extracted text from PDF: ${file.name}`)
+                } catch (pdfError) {
+                  console.error('Error processing PDF:', pdfError)
+                  showToast(`Error processing PDF: ${file.name}`, 'error')
+                  continue
                 }
-
-                // Create storage reference
-                const storageRef = ref(storage, `uploads/${auth.currentUser?.uid || 'guest'}/${fileName}`)
-                console.log('Storage reference created, starting upload...')
-                
-                // Upload the file
-                const uploadResult = await uploadBytes(storageRef, file)
-                console.log('Upload successful, getting download URL...')
-                
-                // Get the download URL
-                url = await getDownloadURL(uploadResult.ref)
-                console.log('Successfully got download URL')
-                
-                content = `[Image URL: ${url}]`
-                showToast(`Successfully uploaded ${file.name}`, 'success')
-              } catch (uploadError) {
-                console.error('Detailed error uploading image:', uploadError)
-                showToast(`Failed to upload image: ${file.name}. Please try again.`, 'error')
-                continue
+              } else if (file.type.startsWith('text/') || file.type === 'application/json') {
+                console.log('Reading text content from:', file.name)
+                content = await file.text()
+                console.log(`Successfully read text content from ${file.name}`)
               }
             }
             
@@ -354,6 +346,7 @@ export default function Home() {
                 size: file.size,
                 url
               })
+              console.log('File successfully processed:', file.name)
             }
           } catch (fileError) {
             console.error(`Error processing file ${file.name}:`, fileError)
@@ -366,12 +359,16 @@ export default function Home() {
 
       // Add user message with attachments
       const userMessage: Message = { 
-        content: content || "Analyzing attached files...", 
+        content: messageContent, 
         role: 'user',
         attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined
       }
       
-      console.log('Creating user message with attachments:', userMessage)
+      console.log('Creating user message:', {
+        content: userMessage.content,
+        attachments: userMessage.attachments?.map(a => a.name)
+      })
+
       const updatedMessages = [...messages, userMessage]
       setMessages(updatedMessages)
       updateChatHistory(chatId, updatedMessages)

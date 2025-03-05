@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ClientOnly from './ClientOnly'
 
 declare global {
@@ -38,8 +38,15 @@ interface Props {
 export default function AnimatedBackground({ children }: Props) {
   const vantaRef = useRef<HTMLDivElement>(null)
   const effectRef = useRef<any>(null)
+  const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isMounted) return
+
     const loadScripts = async () => {
       try {
         // Load Three.js
@@ -95,10 +102,18 @@ export default function AnimatedBackground({ children }: Props) {
         effectRef.current = null
       }
     }
-  }, [])
+  }, [isMounted])
+
+  if (!isMounted) {
+    return (
+      <div className="fixed inset-0 -z-10 bg-gradient-to-b from-[#001a0e] to-black">
+        {children}
+      </div>
+    )
+  }
 
   return (
-    <ClientOnly>
+    <div suppressHydrationWarning>
       <div className="fixed inset-0 -z-10 bg-gradient-to-b from-[#001a0e] to-black">
         <div 
           ref={vantaRef} 
@@ -110,6 +125,6 @@ export default function AnimatedBackground({ children }: Props) {
         />
       </div>
       {children}
-    </ClientOnly>
+    </div>
   )
 } 
