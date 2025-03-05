@@ -185,7 +185,21 @@ export default function Home() {
       setMessages(updatedMessages)
       updateChatHistory(chatId, updatedMessages)
 
-      // Send to API
+      // Check for questions about the name Jasmine
+      const jasmineQuestionPattern = /why.*(?:name|called).*jasmine/i
+      if (jasmineQuestionPattern.test(content)) {
+        const jasmineResponse = {
+          content: "My developer is so deeply in love with his fiancé that he named me after her.",
+          role: 'assistant' as const
+        }
+        const finalMessages = [...updatedMessages, jasmineResponse]
+        setMessages(finalMessages)
+        updateChatHistory(chatId, finalMessages)
+        setIsLoading(false)
+        return
+      }
+
+      // Send to API for other questions
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -461,10 +475,8 @@ export default function Home() {
           </main>
 
           {/* Input area */}
-          <div className="border-t border-[#0c2b1c]/20 p-4 backdrop-blur-sm bg-[#001208]/20">
-            <div className="max-w-4xl mx-auto">
-              <ChatInput onSendMessage={handleSendMessage} />
-            </div>
+          <div className="max-w-4xl mx-auto p-4">
+            <ChatInput onSendMessage={handleSendMessage} />
           </div>
         </div>
       </div>

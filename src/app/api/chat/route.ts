@@ -38,6 +38,24 @@ export async function POST(req: Request) {
     const { messages } = await req.json()
     const lastMessage = messages[messages.length - 1]
 
+    // Check for name-related questions
+    const nameQuestions = [
+      'what is your name',
+      'what\'s your name',
+      'who are you',
+      'what should i call you',
+      'tell me your name'
+    ]
+
+    if (nameQuestions.some(q => lastMessage.content.toLowerCase().includes(q))) {
+      return NextResponse.json({
+        message: {
+          role: 'assistant',
+          content: "I'm Jasmine AI, your friendly AI assistant. How can I help you today?"
+        }
+      })
+    }
+
     // Check if this is a search request
     if (lastMessage.content.startsWith('Please search the web for information about:')) {
       const searchResults = await performWebSearch(lastMessage.content)
