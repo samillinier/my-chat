@@ -1,6 +1,7 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getAuth, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,9 +13,49 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Validate required configuration
+const requiredConfigs = {
+  apiKey: firebaseConfig.apiKey,
+  storageBucket: firebaseConfig.storageBucket,
+  projectId: firebaseConfig.projectId
+};
 
-export { app, auth, db }; 
+Object.entries(requiredConfigs).forEach(([key, value]) => {
+  if (!value) {
+    throw new Error(`Firebase ${key} is not configured! Please check your .env.local file.`);
+  }
+});
+
+let app;
+let auth: Auth;
+let db: Firestore;
+let storage: FirebaseStorage;
+
+try {
+  // Initialize Firebase
+  if (!getApps().length) {
+    app = initializeApp(firebaseConfig);
+    console.log('Firebase app initialized successfully');
+  } else {
+    app = getApp();
+    console.log('Using existing Firebase app');
+  }
+
+  // Initialize services
+  auth = getAuth(app);
+  console.log('Firebase Auth initialized');
+
+  db = getFirestore(app);
+  console.log('Firebase Firestore initialized');
+
+  storage = getStorage(app);
+  if (!storage) {
+    throw new Error('Failed to initialize Firebase Storage');
+  }
+  console.log('Firebase Storage initialized');
+} catch (error) {
+  console.error('Error initializing Firebase:', error);
+  throw error;
+}
+
+export { app, auth, db, storage }; 

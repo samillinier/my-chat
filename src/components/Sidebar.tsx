@@ -30,6 +30,7 @@ interface SidebarProps {
   onRestoreChat: (chatId: string) => void
   onPermanentDelete: (chatId: string) => void
   onEmptyBin: () => void
+  onClose: () => void
 }
 
 interface PreviewModalProps {
@@ -78,7 +79,8 @@ export default function Sidebar({
   binChats,
   onRestoreChat,
   onPermanentDelete,
-  onEmptyBin
+  onEmptyBin,
+  onClose
 }: SidebarProps) {
   const [user, setUser] = useState<any>(null)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
@@ -135,7 +137,7 @@ export default function Sidebar({
             */}
           </div>
         </div>
-        <button className="p-1 hover:bg-[#1a2e23] rounded-lg">
+        <button onClick={onClose} className="p-1 hover:bg-[#1a2e23] rounded-lg lg:hidden">
           <XMarkIcon className="h-5 w-5 text-gray-400" />
         </button>
       </div>

@@ -8,6 +8,12 @@ export interface ChatHistory {
   messages: {
     content: string;
     role: 'user' | 'assistant';
+    attachments?: {
+      name: string;
+      type: string;
+      size: number;
+      url?: string;
+    }[];
   }[];
   createdAt: Date;
   updatedAt: Date;

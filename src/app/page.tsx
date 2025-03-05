@@ -1,16 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ChatBubbleLeftIcon, BoltIcon, ExclamationTriangleIcon, Square3Stack3DIcon, DocumentDuplicateIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { useState, useEffect, useRef } from 'react'
+import { ChatBubbleLeftIcon, BoltIcon, ExclamationTriangleIcon, Square3Stack3DIcon, DocumentDuplicateIcon, CheckCircleIcon, ArrowDownIcon, DocumentTextIcon } from '@heroicons/react/24/outline'
 import Sidebar from '@/components/Sidebar'
 import ChatInput from '@/components/ChatInput'
 import AnimatedBackground from '@/components/AnimatedBackground'
 import { ChatHistory } from '@/components/History'
-import { auth } from '@/lib/firebase'
+import { auth, storage } from '@/lib/firebase'
+import HamburgerMenu from '@/components/HamburgerMenu'
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
+import TypingAnimation from '@/components/TypingAnimation'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 
 interface Message {
   content: string
   role: 'user' | 'assistant'
+  attachments?: {
+    name: string
+    type: string
+    size: number
+    url?: string
+  }[]
 }
 
 interface Toast {
@@ -24,6 +34,13 @@ interface CollectionItem {
   timestamp: Date
 }
 
+// Add new interface for login prompt
+interface LoginPrompt {
+  isVisible: boolean
+  hasInteracted: boolean
+  lastDismissed?: number // Timestamp when user last clicked "Stay logged out"
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -32,9 +49,53 @@ export default function Home() {
   const [chatHistory, setChatHistory] = useState<ChatHistory[]>([])
   const [binChats, setBinChats] = useState<ChatHistory[]>([])
   const [currentChatId, setCurrentChatId] = useState<string | undefined>()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [loginPrompt, setLoginPrompt] = useState<LoginPrompt>({ isVisible: false, hasInteracted: false })
+  const [aiInteractions, setAiInteractions] = useState<number>(0)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+
+  // Function to handle smooth scrolling to bottom
+  const scrollToBottom = () => {
+    if (shouldAutoScroll && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
+
+  // Watch for new messages and scroll if needed
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  // Handle scroll events to determine if user is reading
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const mainContent = e.target as HTMLElement
+      const isAtBottom = mainContent.scrollHeight - mainContent.scrollTop <= mainContent.clientHeight + 100
+      setShouldAutoScroll(isAtBottom)
+    }
+
+    const mainContent = document.querySelector('main')
+    if (mainContent) {
+      mainContent.addEventListener('scroll', handleScroll)
+      return () => mainContent.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
 
   // Load data from localStorage
   const loadDataFromLocalStorage = (userId: string) => {
+    // Load login prompt state
+    const savedLoginPrompt = localStorage.getItem('loginPrompt')
+    if (savedLoginPrompt) {
+      setLoginPrompt(JSON.parse(savedLoginPrompt))
+    }
+
+    // Load interaction count
+    const savedInteractions = localStorage.getItem(`aiInteractions-${userId}`)
+    if (savedInteractions) {
+      setAiInteractions(parseInt(savedInteractions))
+    }
+    
     // Load chat history
     const savedHistory = localStorage.getItem(`chatHistory-${userId}`)
     if (savedHistory) {
@@ -145,6 +206,21 @@ export default function Home() {
     }
   }, [collection])
 
+  // Save AI interactions count to localStorage
+  useEffect(() => {
+    const user = auth.currentUser
+    if (!user) {
+      localStorage.setItem('aiInteractions-guest', aiInteractions.toString())
+    } else {
+      localStorage.setItem(`aiInteractions-${user.uid}`, aiInteractions.toString())
+    }
+  }, [aiInteractions])
+
+  // Save login prompt state to localStorage
+  useEffect(() => {
+    localStorage.setItem('loginPrompt', JSON.stringify(loginPrompt))
+  }, [loginPrompt])
+
   const createNewChat = () => {
     const newChat: ChatHistory = {
       id: Date.now().toString(),
@@ -172,15 +248,130 @@ export default function Home() {
     }))
   }
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, attachments?: File[]) => {
     try {
+      console.log('Starting handleSendMessage with attachments:', attachments?.length || 0)
       setIsLoading(true)
+      
+      // Increment AI interaction counter for non-logged-in users
+      if (!auth.currentUser) {
+        const newCount = aiInteractions + 1
+        setAiInteractions(newCount)
+        
+        // Check if 24 hours have passed since last dismissal
+        const twentyFourHours = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+        const canShowPrompt = !loginPrompt.lastDismissed || 
+                            (Date.now() - loginPrompt.lastDismissed) > twentyFourHours
+
+        // Show login prompt after 10 interactions if conditions are met
+        if (newCount >= 10 && !loginPrompt.hasInteracted && canShowPrompt) {
+          setLoginPrompt({ isVisible: true, hasInteracted: false })
+        }
+      }
       
       // Create new chat if none exists
       const chatId = currentChatId || createNewChat()
 
-      // Add user message
-      const userMessage = { content, role: 'user' as const }
+      // Handle file uploads if any
+      let uploadedFiles: Message['attachments'] = []
+      let fileContents = []
+
+      if (attachments && attachments.length > 0) {
+        console.log('Starting to process attachments:', attachments.map(f => ({ name: f.name, type: f.type, size: f.size })))
+        
+        for (const file of attachments) {
+          console.log(`Processing file: ${file.name} (${file.type})`)
+          
+          try {
+            let content = ''
+            let url: string | undefined
+
+            if (file.type.startsWith('text/') || file.type === 'application/json') {
+              content = await file.text()
+              console.log(`Successfully read text content from ${file.name}`)
+            } else if (file.type.startsWith('image/')) {
+              console.log(`Starting image upload process for: ${file.name}`)
+              
+              // Validate file size again
+              const maxSize = 10 * 1024 * 1024 // 10MB limit
+              if (file.size > maxSize) {
+                showToast(`Image ${file.name} is too large (max 10MB)`, 'error')
+                continue
+              }
+
+              // Validate image type
+              const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+              if (!allowedImageTypes.includes(file.type)) {
+                showToast(`Image type ${file.type} is not supported. Please use JPEG, PNG, GIF, or WebP.`, 'error')
+                continue
+              }
+
+              try {
+                // Create a unique filename
+                const timestamp = Date.now()
+                const randomString = Math.random().toString(36).substring(7)
+                const extension = file.name.split('.').pop()
+                const fileName = `${timestamp}-${randomString}.${extension}`
+                
+                console.log('Creating storage reference for:', fileName)
+                
+                if (!storage) {
+                  throw new Error('Firebase Storage is not initialized')
+                }
+
+                // Create storage reference
+                const storageRef = ref(storage, `uploads/${auth.currentUser?.uid || 'guest'}/${fileName}`)
+                console.log('Storage reference created, starting upload...')
+                
+                // Upload the file
+                const uploadResult = await uploadBytes(storageRef, file)
+                console.log('Upload successful, getting download URL...')
+                
+                // Get the download URL
+                url = await getDownloadURL(uploadResult.ref)
+                console.log('Successfully got download URL')
+                
+                content = `[Image URL: ${url}]`
+                showToast(`Successfully uploaded ${file.name}`, 'success')
+              } catch (uploadError) {
+                console.error('Detailed error uploading image:', uploadError)
+                showToast(`Failed to upload image: ${file.name}. Please try again.`, 'error')
+                continue
+              }
+            }
+            
+            if (content || url) {
+              console.log(`Adding processed file ${file.name} to message`)
+              fileContents.push({
+                name: file.name,
+                type: file.type,
+                content: content
+              })
+
+              uploadedFiles.push({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                url
+              })
+            }
+          } catch (fileError) {
+            console.error(`Error processing file ${file.name}:`, fileError)
+            showToast(`Error processing file: ${file.name}`, 'error')
+          }
+        }
+      }
+
+      console.log('File processing complete. Processed files:', uploadedFiles.length)
+
+      // Add user message with attachments
+      const userMessage: Message = { 
+        content: content || "Analyzing attached files...", 
+        role: 'user',
+        attachments: uploadedFiles.length > 0 ? uploadedFiles : undefined
+      }
+      
+      console.log('Creating user message with attachments:', userMessage)
       const updatedMessages = [...messages, userMessage]
       setMessages(updatedMessages)
       updateChatHistory(chatId, updatedMessages)
@@ -199,14 +390,15 @@ export default function Home() {
         return
       }
 
-      // Send to API for other questions
+      // Send to API for processing
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: updatedMessages
+          messages: updatedMessages,
+          fileContents: fileContents // Send file contents to API
         }),
       })
 
@@ -225,6 +417,7 @@ export default function Home() {
       updateChatHistory(chatId, finalMessages)
     } catch (error) {
       console.error('Error sending message:', error)
+      showToast('Failed to send message', 'error')
     } finally {
       setIsLoading(false)
     }
@@ -312,6 +505,49 @@ export default function Home() {
 
   return (
     <AnimatedBackground>
+      {/* Hamburger Menu */}
+      <HamburgerMenu onClick={() => setIsSidebarOpen(!isSidebarOpen)} />
+
+      {/* Login Prompt */}
+      {loginPrompt.isVisible && !auth.currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
+          <div className="bg-[#0a1f15]/90 p-6 rounded-xl shadow-xl max-w-md w-full mx-4 border border-[#00D26A]/20 backdrop-blur-md">
+            <h2 className="text-xl font-semibold text-white mb-4">Get More from Jasmine AI</h2>
+            <p className="text-gray-300 mb-6">Log in or sign up to get smarter responses, upload files and images, and more.</p>
+            <div className="space-y-4">
+              <button
+                onClick={() => {
+                  const provider = new GoogleAuthProvider();
+                  signInWithPopup(auth, provider);
+                  setLoginPrompt({ isVisible: false, hasInteracted: true });
+                }}
+                className="w-full flex items-center justify-center space-x-3 px-4 py-2.5 text-white bg-[#1a2e23] hover:bg-[#243b2f] rounded-lg transition-colors font-medium border border-[#2a3f32]"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                <span>Sign in with Google</span>
+              </button>
+              <button
+                onClick={() => {
+                  setLoginPrompt({ 
+                    isVisible: false, 
+                    hasInteracted: true,
+                    lastDismissed: Date.now()
+                  });
+                }}
+                className="w-full px-4 py-2.5 text-gray-400 hover:text-white transition-colors font-medium"
+              >
+                Stay logged out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-50 flex items-center space-x-2 px-4 py-2 rounded-lg shadow-lg bg-[#1a2e23] text-white">
@@ -323,23 +559,39 @@ export default function Home() {
       )}
 
       <div className="flex h-screen">
-        {/* Sidebar */}
-        <Sidebar 
-          collection={collection}
-          onDeleteFromCollection={handleDeleteFromCollection}
-          onNewChat={createNewChat}
-          chatHistory={chatHistory}
-          currentChatId={currentChatId}
-          onSelectChat={handleSelectChat}
-          onDeleteChat={handleDeleteChat}
-          binChats={binChats}
-          onRestoreChat={handleRestoreChat}
-          onPermanentDelete={handlePermanentDelete}
-          onEmptyBin={handleEmptyBin}
-        />
+        {/* Sidebar - Hidden by default on mobile */}
+        <div className={`fixed inset-0 lg:relative z-40 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
+          <div className="h-full">
+            <Sidebar 
+              collection={collection}
+              onDeleteFromCollection={handleDeleteFromCollection}
+              onNewChat={createNewChat}
+              chatHistory={chatHistory}
+              currentChatId={currentChatId}
+              onSelectChat={(chatId, messages) => {
+                handleSelectChat(chatId, messages)
+                setIsSidebarOpen(false) // Close sidebar after selection on mobile
+              }}
+              onDeleteChat={handleDeleteChat}
+              binChats={binChats}
+              onRestoreChat={handleRestoreChat}
+              onPermanentDelete={handlePermanentDelete}
+              onEmptyBin={handleEmptyBin}
+              onClose={() => setIsSidebarOpen(false)}
+            />
+          </div>
+        </div>
+
+        {/* Overlay for mobile */}
+        {isSidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
 
         {/* Main content */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col w-full">
           {/* Main content area */}
           <main className="flex-1 p-6 overflow-y-auto">
             {messages.length === 0 && (
@@ -348,12 +600,10 @@ export default function Home() {
                   <img src="/my-logo.png" alt="Logo" className="h-12 w-auto" />
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto w-full px-4">
+                {/* Example cards - Hidden on mobile */}
+                <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto w-full px-4">
                   {/* Examples */}
-                  <div 
-                    onClick={() => handleExampleClick("Explain quantum computing in simple terms")}
-                    className="p-5 rounded-xl bg-[#052e1f]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg hover:bg-[#052e1f]/50 transition-colors duration-200 cursor-pointer"
-                  >
+                  <div className="p-5 rounded-xl bg-[#052e1f]/40 backdrop-blur-md border border-[#0c2b1c]/30 shadow-lg hover:bg-[#052e1f]/50 transition-colors duration-200">
                     <div className="flex items-center mb-4">
                       <div className="p-1.5 bg-[#00ff88]/10 rounded-lg">
                         <ChatBubbleLeftIcon className="h-5 w-5 text-[#00ff88]" />
@@ -362,16 +612,19 @@ export default function Home() {
                     </div>
                     <div className="space-y-3">
                       <p 
+                        onClick={() => handleExampleClick("Explain quantum computing in simple terms")}
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
                       >
                         "Explain quantum computing in simple terms" →
                       </p>
                       <p 
+                        onClick={() => handleExampleClick("How to make ethiopian doro wot easily")}
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
                       >
                         "How to make ethiopian doro wot easily" →
                       </p>
                       <p 
+                        onClick={() => handleExampleClick("How do I make an HTTP request in JavaScript?")}
                         className="text-[#e2e8f0] text-sm hover:bg-[#0c2b1c]/50 p-3 rounded-lg cursor-pointer transition-colors duration-200"
                       >
                         "How do I make an HTTP request in JavaScript?" →
@@ -427,23 +680,72 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+
+                {/* Mobile welcome message */}
+                <div className="md:hidden text-center px-4">
+                  <h2 className="text-xl text-white mb-4">What can I help with?</h2>
+                </div>
               </div>
             )}
 
-            {/* Messages will be rendered here */}
+            {/* Messages */}
             <div className="space-y-8 max-w-4xl mx-auto">
               {messages.map((message, index) => (
                 <div key={index} className="relative">
                   <div
                     className={
                       message.role === 'user'
-                        ? 'p-6 bg-[#00D26A] ml-auto max-w-[600px] rounded-[24px] shadow-lg'
-                        : 'p-6 bg-[#0a1f15] mr-auto max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30'
+                        ? 'p-4 sm:p-6 bg-[#00D26A] ml-auto max-w-[90%] sm:max-w-[600px] rounded-[24px] shadow-lg'
+                        : 'p-4 sm:p-6 bg-[#0a1f15] mr-auto max-w-[90%] sm:max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30'
                     }
                   >
-                    <p className={`text-lg leading-relaxed whitespace-pre-wrap ${
+                    <p className={`text-sm sm:text-base leading-relaxed whitespace-pre-wrap ${
                       message.role === 'user' ? 'text-black' : 'text-white'
                     }`}>{message.content}</p>
+                    
+                    {/* Display attachments if any */}
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {message.attachments.map((file, fileIndex) => (
+                          <div key={fileIndex}>
+                            {file.type.startsWith('image/') && file.url ? (
+                              <div className="relative group">
+                                <img 
+                                  src={file.url} 
+                                  alt={file.name}
+                                  className="max-h-48 rounded-lg object-contain bg-black/20"
+                                />
+                                <a 
+                                  href={file.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
+                                >
+                                  <span className="text-white text-sm">View full size</span>
+                                </a>
+                              </div>
+                            ) : (
+                              <a 
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center space-x-2 p-2 rounded-lg hover:opacity-80 transition-opacity ${
+                                  message.role === 'user' 
+                                    ? 'bg-[#00bf62] text-black'
+                                    : 'bg-[#1a2e23] text-white'
+                                }`}
+                              >
+                                <DocumentTextIcon className="h-5 w-5" />
+                                <span className="text-sm truncate">{file.name}</span>
+                                <span className="text-xs opacity-75">
+                                  ({Math.round(file.size / 1024)}KB)
+                                </span>
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   
                   {message.role === 'assistant' && (
@@ -467,15 +769,31 @@ export default function Home() {
                 </div>
               ))}
               {isLoading && (
-                <div className="p-6 bg-[#0a1f15] mr-auto max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30">
-                  <p className="text-white text-lg">Thinking...</p>
+                <div className="p-4 sm:p-6 bg-[#0a1f15] mr-auto max-w-[90%] sm:max-w-[800px] rounded-[20px] shadow-lg border border-[#0c2b1c]/30">
+                  <TypingAnimation />
                 </div>
+              )}
+              {/* Invisible div for scrolling reference */}
+              <div ref={messagesEndRef} />
+
+              {/* New message indicator */}
+              {!shouldAutoScroll && messages.length > 0 && (
+                <button
+                  onClick={() => {
+                    setShouldAutoScroll(true)
+                    scrollToBottom()
+                  }}
+                  className="fixed bottom-24 right-8 bg-[#00D26A] text-black px-4 py-2 rounded-full shadow-lg flex items-center space-x-2 hover:bg-[#00bf62] transition-colors duration-200"
+                >
+                  <span>New message</span>
+                  <ArrowDownIcon className="h-4 w-4" />
+                </button>
               )}
             </div>
           </main>
 
           {/* Input area */}
-          <div className="max-w-4xl mx-auto p-4">
+          <div className="max-w-4xl mx-auto w-full p-4">
             <ChatInput onSendMessage={handleSendMessage} />
           </div>
         </div>

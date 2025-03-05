@@ -33,9 +33,15 @@ async function performWebSearch(query: string) {
   }
 }
 
+interface FileContent {
+  name: string
+  type: string
+  content: string
+}
+
 export async function POST(req: Request) {
   try {
-    const { messages } = await req.json()
+    const { messages, fileContents } = await req.json()
     const lastMessage = messages[messages.length - 1]
 
     // Check for name-related questions
@@ -82,6 +88,32 @@ export async function POST(req: Request) {
             role: 'system',
             content: `You are helping the user search the web. Here are the search results for their query:\n\n${searchResultsText}\n\nPlease summarize these results in a helpful and concise way. Include relevant facts and cite sources when appropriate.`
           }
+        ],
+      })
+
+      return NextResponse.json({
+        message: completion.choices[0].message
+      })
+    }
+
+    // Handle file processing
+    if (fileContents && fileContents.length > 0) {
+      // Prepare file content for GPT
+      const fileInfo = fileContents.map((file: FileContent) => 
+        `File: ${file.name} (${file.type})\nContent:\n${file.content}\n---\n`
+      ).join('\n')
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: 'system',
+            content: `You are analyzing files for the user. Here are the contents of the uploaded files:\n\n${fileInfo}\n\nPlease analyze these files and provide insights, summaries, or answer any questions the user has about them. If the files contain code, you can provide code review, suggestions for improvement, or help fix any issues.`
+          },
+          ...messages.map((msg: any) => ({
+            role: msg.role,
+            content: msg.content
+          }))
         ],
       })
 

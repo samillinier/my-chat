@@ -1,5 +1,5 @@
 import { PlusIcon, GlobeAltIcon, LightBulbIcon, ArrowUpIcon, XMarkIcon, DocumentTextIcon, SparklesIcon, ChartBarIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline'
-import { useState, FormEvent, useRef } from 'react'
+import { useState, FormEvent, useRef, useEffect } from 'react'
 
 interface ChatInputProps {
   onSendMessage: (message: string, attachments?: File[]) => void
@@ -40,21 +40,90 @@ export default function ChatInput({ onSendMessage, onScrollToTop }: ChatInputPro
     setIsReasoningMode(false)
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    setAttachments(prev => [...prev, ...files])
+  const handleAttachClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    console.log('Attach button clicked')
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      console.log('Opening file picker')
+      fileInputRef.current.click()
+    } else {
+      console.error('File input reference is null')
+    }
+  }
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('File selection started')
+    try {
+      const files = Array.from(e.target.files || [])
+      console.log('Selected files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })))
+      
+      if (files.length > 0) {
+        // Validate file types and sizes
+        const validFiles = files.filter(file => {
+          const maxSize = 10 * 1024 * 1024; // 10MB limit
+          if (file.size > maxSize) {
+            alert(`File ${file.name} is too large (max 10MB)`)
+            return false
+          }
+          
+          // Only allow specific image types
+          const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+          if (file.type.startsWith('image/')) {
+            if (!allowedImageTypes.includes(file.type)) {
+              alert(`Image type ${file.type} is not supported. Please use JPEG, PNG, GIF, or WebP.`)
+              return false
+            }
+            return true
+          }
+          
+          // Allow text files
+          if (file.type.startsWith('text/') || file.type === 'application/json') {
+            return true
+          }
+          
+          alert(`Sorry, ${file.name} cannot be processed. Only images (JPEG, PNG, GIF, WebP) and text files are supported.`)
+          return false
+        })
+
+        if (validFiles.length === 0) {
+          return
+        }
+
+        console.log('Valid files:', validFiles.map(f => ({ name: f.name, type: f.type, size: f.size })))
+        setAttachments(prev => [...prev, ...validFiles])
+        
+        // Clear the input value to allow selecting the same file again
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+          console.log('File input cleared')
+        }
+      }
+    } catch (error) {
+      console.error('Error in file selection:', error)
+      alert('Error processing files. Please try again with supported file types only.')
     }
   }
 
   const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index))
+    console.log('Removing attachment at index:', index)
+    setAttachments(prev => {
+      const newAttachments = [...prev]
+      newAttachments.splice(index, 1)
+      return newAttachments
+    })
   }
 
-  const handleAttachClick = () => {
-    fileInputRef.current?.click()
-  }
+  // Add cleanup for file object URLs
+  useEffect(() => {
+    return () => {
+      // Cleanup any created object URLs when component unmounts
+      attachments.forEach(file => {
+        if (file.type.startsWith('image/')) {
+          URL.revokeObjectURL(URL.createObjectURL(file))
+        }
+      })
+    }
+  }, [attachments])
 
   const handleSummarizeClick = () => {
     setInput('Please summarize the following text:\n\n')
@@ -94,17 +163,43 @@ export default function ChatInput({ onSendMessage, onScrollToTop }: ChatInputPro
 
         <div className="bg-[#141414] rounded-[20px] p-6">
           <form onSubmit={handleSubmit}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+              accept="image/*,text/*,.json"
+              onClick={e => {
+                (e.target as HTMLInputElement).value = ''
+              }}
+            />
+
             {attachments.length > 0 && (
               <div className="mb-4 flex flex-wrap gap-2">
                 {attachments.map((file, index) => (
                   <div 
                     key={index}
-                    className="flex items-center gap-2 bg-[#2a2a2a] text-white px-3 py-1.5 rounded-full text-sm"
+                    className={`relative group flex items-center gap-2 ${
+                      file.type.startsWith('image/') ? 'bg-[#2a2a2a]/50' : 'bg-[#2a2a2a]'
+                    } text-white px-3 py-1.5 rounded-lg text-sm`}
                   >
+                    {file.type.startsWith('image/') && (
+                      <div className="relative w-8 h-8">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={file.name}
+                          className="w-full h-full object-cover rounded"
+                        />
+                      </div>
+                    )}
                     <span className="max-w-[200px] truncate">{file.name}</span>
                     <button
                       type="button"
-                      onClick={() => removeAttachment(index)}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        removeAttachment(index)
+                      }}
                       className="text-gray-400 hover:text-white"
                     >
                       <XMarkIcon className="h-4 w-4" />
@@ -130,15 +225,6 @@ export default function ChatInput({ onSendMessage, onScrollToTop }: ChatInputPro
               />
             </div>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleFileSelect}
-              className="hidden"
-              accept="image/*,.pdf,.doc,.docx,.txt"
-            />
-
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -147,10 +233,13 @@ export default function ChatInput({ onSendMessage, onScrollToTop }: ChatInputPro
                   attachments.length > 0
                     ? 'text-[#00ff88] border-[#00ff88]'
                     : 'text-gray-400 hover:text-white border-[#2a2a2a]'
-                } border rounded-full text-sm transition-colors duration-200`}
+                } border rounded-full text-sm transition-colors duration-200 hover:bg-[#2a2a2a] group relative`}
               >
                 <PlusIcon className="h-4 w-4" />
                 Attach
+                <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-[#2a2a2a] text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Supports text and image files
+                </span>
               </button>
               <button
                 type="button"
