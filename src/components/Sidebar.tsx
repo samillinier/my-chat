@@ -115,17 +115,15 @@ export default function Sidebar({
     <div className="w-64 bg-[#000a06] flex flex-col h-screen text-gray-400">
       {/* Header */}
       <div className="flex items-center justify-between p-4">
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 bg-gradient-to-tr from-green-400 to-green-500 rounded-full"></div>
-          <div className="flex items-center">
-            <img src="/my-logo.png" alt="Logo" className="h-6 w-auto" />
-            {/* Text logo version - uncomment if needed
-            <span className="logo-text text-white text-2xl tracking-tight">Jasmine</span>
-            <span className="logo-text logo-text-ai text-2xl ml-1.5">AI</span>
-            */}
+        <div className="flex items-center justify-center flex-1 lg:justify-start">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-gradient-to-tr from-green-400 to-green-500 rounded-full"></div>
+            <div className="flex items-center">
+              <img src="/my-logo.png" alt="Logo" className="h-6 w-auto" />
+            </div>
           </div>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-[#1a2e23] rounded-lg lg:hidden">
+        <button onClick={onClose} className="absolute right-4 p-1 hover:bg-[#1a2e23] rounded-lg lg:hidden">
           <XMarkIcon className="h-5 w-5 text-gray-400" />
         </button>
       </div>

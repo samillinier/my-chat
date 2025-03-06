@@ -36,11 +36,14 @@ export const initFirebase = () => {
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
     const fullDomain = `${protocol}//${hostname}`;
-    console.log('Current domain:', fullDomain);
-    console.log('Auth configuration:', {
-      currentUrl: fullDomain,
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    console.log('Firebase initialization:', {
+      currentDomain: fullDomain,
+      environment: process.env.NODE_ENV,
       authDomain: firebaseConfig.authDomain,
-      expectedRedirectUri: `${fullDomain}/__/auth/handler`
+      isProduction,
+      vercelEnv: process.env.NEXT_PUBLIC_VERCEL_ENV
     });
   }
 
@@ -59,9 +62,11 @@ export const initFirebase = () => {
       auth = getAuth(app);
       auth.useDeviceLanguage();
       
-      // Set custom parameters for auth
-      const auth2 = getAuth();
-      auth2.settings.appVerificationDisabledForTesting = true; // Enable in development
+      // Only enable this in development
+      if (process.env.NODE_ENV === 'development') {
+        const auth2 = getAuth();
+        auth2.settings.appVerificationDisabledForTesting = true;
+      }
     }
 
     if (!storage) {

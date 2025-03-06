@@ -101,23 +101,32 @@ export function useFirebaseAuth() {
       
       // Set custom parameters
       provider.setCustomParameters({
-        prompt: 'select_account'
+        prompt: 'select_account',
+        // Add hosted domain if you want to restrict to specific domains
+        // hosted_domain: 'yourdomain.com'
       });
       
-      // Log auth configuration
+      // Log auth configuration and environment
       const currentUrl = window.location.href;
-      const redirectUrl = `${window.location.origin}/__/auth/handler`;
+      const currentOrigin = window.location.origin;
       console.log('Sign-in configuration:', {
         currentUrl,
-        redirectUrl,
-        authDomain: auth.config.authDomain
+        currentOrigin,
+        authDomain: auth.config.authDomain,
+        isProduction: process.env.NODE_ENV === 'production',
+        firebaseProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
       });
 
-      // Always use popup for authentication in development
-      console.log('Using popup sign-in...');
-      const result = await signInWithPopup(auth, provider);
-      console.log('Sign-in successful:', result.user.email);
-      setUser(result.user);
+      try {
+        console.log('Attempting popup sign-in...');
+        const result = await signInWithPopup(auth, provider);
+        console.log('Sign-in successful:', result.user.email);
+        setUser(result.user);
+      } catch (popupError) {
+        console.error('Popup sign-in failed, trying redirect...', popupError);
+        // Fallback to redirect method if popup fails
+        await signInWithRedirect(auth, provider);
+      }
     } catch (err: unknown) {
       console.error('Sign in error:', err);
       if (err instanceof FirebaseError) {
