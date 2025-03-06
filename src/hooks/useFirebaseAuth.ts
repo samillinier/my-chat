@@ -104,23 +104,28 @@ export function useFirebaseAuth() {
         prompt: 'select_account'
       });
       
-      // Check if device is mobile
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      console.log('Device type:', isMobile ? 'mobile' : 'desktop');
-      
-      if (isMobile) {
-        console.log('Using redirect sign-in for mobile...');
-        await signInWithRedirect(auth, provider);
-        // Note: The page will refresh after this
-      } else {
-        console.log('Using popup sign-in for desktop...');
-        const result = await signInWithPopup(auth, provider);
-        console.log('Popup sign-in successful');
-        setUser(result.user);
-      }
+      // Log auth configuration
+      const currentUrl = window.location.href;
+      const redirectUrl = `${window.location.origin}/__/auth/handler`;
+      console.log('Sign-in configuration:', {
+        currentUrl,
+        redirectUrl,
+        authDomain: auth.config.authDomain
+      });
+
+      // Always use popup for authentication in development
+      console.log('Using popup sign-in...');
+      const result = await signInWithPopup(auth, provider);
+      console.log('Sign-in successful:', result.user.email);
+      setUser(result.user);
     } catch (err: unknown) {
       console.error('Sign in error:', err);
       if (err instanceof FirebaseError) {
+        console.error('Detailed error info:', {
+          code: err.code,
+          message: err.message,
+          customData: err.customData
+        });
         setError(`Sign-in failed: ${err.code} - ${err.message}`);
       } else {
         setError(err instanceof Error ? err.message : 'Failed to sign in');

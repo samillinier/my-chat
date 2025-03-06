@@ -18,7 +18,7 @@ const ensureHttps = (domain: string | undefined) => {
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  authDomain: "jasmine-9cd47.firebaseapp.com",
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
@@ -37,54 +37,11 @@ export const initFirebase = () => {
     const hostname = window.location.hostname;
     const fullDomain = `${protocol}//${hostname}`;
     console.log('Current domain:', fullDomain);
-    
-    // Force HTTPS except for localhost
-    if (protocol !== 'https:' && !hostname.includes('localhost')) {
-      console.warn('Warning: Site is not using HTTPS. This may cause authentication issues.');
-    }
-  }
-
-  // Ensure authDomain uses HTTPS
-  const configWithHttps = {
-    ...firebaseConfig,
-    authDomain: ensureHttps(firebaseConfig.authDomain) || '',
-  };
-
-  console.log('Starting Firebase initialization with config:', {
-    hasApiKey: !!configWithHttps.apiKey,
-    hasAuthDomain: !!configWithHttps.authDomain,
-    hasProjectId: !!configWithHttps.projectId,
-    hasStorageBucket: !!configWithHttps.storageBucket,
-    hasMessagingSenderId: !!configWithHttps.messagingSenderId,
-    hasAppId: !!configWithHttps.appId,
-    authDomain: configWithHttps.authDomain, // Log actual authDomain for debugging
-  });
-
-  // Check all required config values
-  const requiredConfigs = {
-    apiKey: configWithHttps.apiKey,
-    authDomain: configWithHttps.authDomain,
-    projectId: configWithHttps.projectId,
-    storageBucket: configWithHttps.storageBucket,
-    appId: configWithHttps.appId,
-  };
-
-  const missingConfigs = Object.entries(requiredConfigs)
-    .filter(([_, value]) => !value)
-    .map(([key]) => key);
-
-  if (missingConfigs.length > 0) {
-    throw new Error(`Missing required Firebase configuration: ${missingConfigs.join(', ')}. Please check your environment variables.`);
-  }
-
-  // Ensure authDomain matches current domain in production Vercel environment
-  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_VERCEL_ENV === 'production') {
-    const currentDomain = window.location.hostname;
-    const configDomain = configWithHttps.authDomain?.replace('https://', '');
-    
-    if (currentDomain.includes('vercel.app') && configDomain !== currentDomain) {
-      console.warn(`Warning: Current domain (${currentDomain}) doesn't match Firebase authDomain (${configDomain}). This may cause authentication issues.`);
-    }
+    console.log('Auth configuration:', {
+      currentUrl: fullDomain,
+      authDomain: firebaseConfig.authDomain,
+      expectedRedirectUri: `${fullDomain}/__/auth/handler`
+    });
   }
 
   try {
@@ -94,12 +51,17 @@ export const initFirebase = () => {
       app = getApp();
     } else {
       console.log('Initializing new Firebase app...');
-      app = initializeApp(configWithHttps);
+      app = initializeApp(firebaseConfig);
     }
 
     if (!auth) {
       console.log('Initializing Firebase Auth...');
       auth = getAuth(app);
+      auth.useDeviceLanguage();
+      
+      // Set custom parameters for auth
+      const auth2 = getAuth();
+      auth2.settings.appVerificationDisabledForTesting = true; // Enable in development
     }
 
     if (!storage) {
